@@ -114,7 +114,8 @@ ser2net_proxy() {
 
 	config_get protocol "$cfg" protocol
 	case "$protocol" in
-	        raw|rawlp) protocol="tcp" ;;
+		raw) protocol="tcp" ;;
+		rawlp) protocol="tcp" ; options="$options,wronly" ;;
 		telnet) protocol="telnet,tcp" ;;
 		off) enabled=0 ;;
 		*) return 1
