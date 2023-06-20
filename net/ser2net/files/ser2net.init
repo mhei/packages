@@ -55,6 +55,9 @@ ser2net_default() {
 
 	for key in chardelay deassert_CTS_DCD_DSR_on_connect hangup_when_done kickolduser \
 	           local nobreak remctl rtscts telnet_brk_on_sync xonxoff; do
+		case "$key" in
+			remctl) key=rfc2217 ;;
+		esac
 		config_get_bool val "$cfg" "$key"
 		[ -n "$val" ] || continue
 		[ "$val" -eq 0 ] && val="false" || val="true"
@@ -116,6 +119,8 @@ ser2net_proxy() {
 		off) enabled=0 ;;
 		*) return 1
 	esac
+	config_get_bool boolval "$cfg" remctl 0
+	[ "$boolval" -gt 0 ] && $protocol="telnet(rfc2217),tcp,"
 
 	config_get timeout "$cfg" timeout 0
 	config_get device "$cfg" device
@@ -163,7 +168,7 @@ ser2net_proxy() {
 		echo "    $key: $val"
 	done
 
-	for key in chardelay telnet_brk_on_sync kickolduser remctl; do
+	for key in chardelay telnet_brk_on_sync kickolduser; do
 		config_get_bool boolval "$cfg" "$key"
 		[ -n "$boolval" ] || continue
 		key=`echo "$key" | tr '_' '-'`
