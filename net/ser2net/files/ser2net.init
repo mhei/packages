@@ -107,8 +107,6 @@ ser2net_proxy() {
 	local key boolval options
 
 	config_get_bool enabled "$cfg" enabled 0
-	[ "$enabled" -eq 0 ] && return 0
-
 	config_get port "$cfg" port
 	[ "$port" -le 0 -o "$port" -gt 65535 ] && return 1
 
