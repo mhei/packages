@@ -21,34 +21,41 @@ list_cb_append() {
 ser2net_default() {
 	local cfg="$1"
 	local key val
+	local baudrate parity databits stopbits
 
 	config_get baudrate "$cfg" speed
-	config_get parity "$cfg" parity
-	parity=`echo "$parity" | head -c 1`
-	[ -z "$parity" ] && parity=n
+	if [ -n "$baudrate" ]; then
+		config_get parity "$cfg" parity
+		case "$parity" in
+			[Nn]one) parity=n ;;
+			[Oo]dd) parity=o ;;
+			[Ee]ven) parity=e ;;
+			"") ;;
+			*) return 1
+		esac
 
-	config_get databits "$cfg" databits
-	if [ -n "$databits" ]; then
-		[ "$databits" -lt 5 -o "$databits" -gt 8 ] && return 1
+		if [ -n "$parity" ]; then
+			config_get databits "$cfg" databits 8
+			[ "$databits" -ge 5 ] && [ "$databits" -le 9 ] || return 1
+
+			config_get stopbits "$cfg" stopbits 1
+			case "$stopbits" in
+				1) ;;
+				2) ;;
+				*) return 1
+			esac
+		fi
+
+		echo "default:"
+		echo "  name: speed"
+		echo "  value: $baudrate${parity:+$parity$databits$stopbits}"
 	fi
-
-	config_get stopbits "$cfg" stopbits
-	case "$stopbits" in
-		1) ;;
-		2) ;;
-		"") ;;
-		*) return 1
-	esac
-
-	echo "default:"
-	echo "  name: speed"
-	echo "  value: $baudrate$parity$databits$stopbits"
 
 	for key in chardelay_scale chardelay_min; do
 		config_get val "$cfg" "$key"
 		[ -n "$val" ] || continue
 		key=`echo "$key" | tr '_' '-'`
-		echo "default: &$cfg_$key"
+		echo "default:"
 		echo "  name: $key"
 		echo "  value: $val"
 	done
@@ -60,9 +67,9 @@ ser2net_default() {
 		esac
 		config_get_bool val "$cfg" "$key"
 		[ -n "$val" ] || continue
-		[ "$val" -eq 0 ] && val="false" || val="true"
 		key=`echo "$key" | tr '_' '-'`
-		echo "default: &$cfg_$key"
+		[ "$val" -eq 0 ] && val="false" || val="true"
+		echo "default:"
 		echo "  name: $key"
 		echo "  value: $val"
 	done
@@ -79,9 +86,12 @@ ser2net_controlport() {
 
 	config_get host "$cfg" host
 	config_get port "$cfg" port
+	[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || return 1
 
-	echo "admin: &$cfg"
-	echo "  accepter: tcp,$host,$port"
+	echo "admin:"
+	echo "  accepter: tcp,${host:+$host,}$port"
+
+	echo
 }
 
 ser2net_led() {
@@ -90,90 +100,114 @@ ser2net_led() {
 
 	config_get driver "$cfg" driver sysfs
 	config_get device "$cfg" device
-	config_get state "$cfg" state 1
-	config_get duration "$cfg" duration 20
+	[ -z "$device" ] && return 1
+	config_get duration "$cfg" duration
+	config_get state "$cfg" state
 
 	echo "led: &$cfg"
 	echo "  driver: $driver"
 	echo "  options:"
-	echo "    device: $device"
-	echo "    duration: $duration"
-	echo "    state: $state"
+	echo "    device: \"$device\""
+	[ -n "$duration" ] && echo "    duration: $duration"
+	[ -n "$state" ] && echo "    state: $state"
+
+	echo
 }
 
 ser2net_proxy() {
 	local cfg="$1"
 	local enabled port protocol timeout device baudrate databits parity stopbits
-	local key boolval options
+	local key boolval options custom_options
+	local echo_options=1
 
 	config_get_bool enabled "$cfg" enabled 0
-	config_get port "$cfg" port
-	[ "$port" -le 0 -o "$port" -gt 65535 ] && return 1
 
-	config_get protocol "$cfg" protocol
-	case "$protocol" in
-		raw) protocol="tcp" ;;
-		rawlp) protocol="tcp" ; options="$options,wronly" ;;
-		telnet) protocol="telnet,tcp" ;;
-		off) enabled=0 ;;
-		*) return 1
-	esac
-	config_get_bool boolval "$cfg" remctl 0
-	[ "$boolval" -gt 0 ] && $protocol="telnet(rfc2217),tcp,"
-
-	config_get timeout "$cfg" timeout 0
 	config_get device "$cfg" device
 	[ -z "$device" ] && return 1
 
-	config_get baudrate "$cfg" baudrate
-	config_get parity "$cfg" parity
-	parity=`echo "$parity" | head -c 1`
-	[ -z "$parity" ] && parity=n
+	config_get port "$cfg" port
+	[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || return 1
 
-	config_get databits "$cfg" databits
-	if [ -n "$databits" ]; then
-		[ "$databits" -lt 5 -o "$databits" -gt 8 ] && return 1
-	fi
+	config_get protocol "$cfg" protocol
+	case "$protocol" in
+		raw)
+			protocol="tcp"
+			;;
+		rawlp)
+			protocol="tcp"
+			options="wronly"
+			;;
+		telnet)
+			protocol="telnet,tcp"
 
-	config_get stopbits "$cfg" stopbits
-	case "$stopbits" in
-		1) ;;
-		2) ;;
-		"") ;;
+			config_get_bool boolval "$cfg" remctl 0
+			[ "$boolval" -eq 1 ] && protocol="telnet(rfc2217),tcp"
+			;;
+		off)
+			enabled=0
+			;;
 		*) return 1
 	esac
+
+	config_get baudrate "$cfg" baudrate
+	if [ -n "$baudrate" ]; then
+		config_get parity "$cfg" parity
+		case "$parity" in
+			[Nn]one) parity=n ;;
+			[Oo]dd) parity=o ;;
+			[Ee]ven) parity=e ;;
+			"") ;;
+			*) return 1
+		esac
+
+		if [ -n "$parity" ]; then
+			config_get databits "$cfg" databits 8
+			[ "$databits" -ge 5 ] && [ "$databits" -le 9 ] || return 1
+
+			config_get stopbits "$cfg" stopbits 1
+			case "$stopbits" in
+				1) ;;
+				2) ;;
+				*) return 1
+			esac
+		fi
+	fi
+
+	config_get timeout "$cfg" timeout 0
 
 	for key in rtscts local xonxoff nobreak hangup_when_done; do
 		config_get_bool boolval "$cfg" "$key"
 		[ -n "$boolval" ] || continue
 		key=`echo "$key" | tr '_' '-'`
-		options="$options,$key"
+		options="${options:+$options,}$key"
 		[ "$boolval" -eq 0 ] && options="$options=false"
 	done
 
-	config_list_foreach "$cfg" options list_cb_append options
+	config_list_foreach "$cfg" custom_options list_cb_append options
 
 	echo "connection: &$cfg"
 	echo "  accepter: $protocol,$port"
 	echo "  timeout: $timeout"
 	[ "$enabled" -eq 0 ] && echo "  enable: off"
-	echo "  connector: serialdev,$device,$baudrate$parity$databits$stopbits$options"
-	echo "  options:"
+	echo "  connector: serialdev,$device${baudrate:+,$baudrate${parity:+$parity$databits$stopbits}}${options:+,$options}${custom_options:+,$custom_options}"
 
 	for key in led_tx led_rx; do
 		config_get val "$cfg" "$key"
 		[ -n "$val" ] || continue
+		[ "$echo_options" -eq 1 ] && echo "  options:" && echo_options=0
 		key=`echo "$key" | tr '_' '-'`
-		echo "    $key: $val"
+		echo "    $key: *$val"
 	done
 
 	for key in chardelay telnet_brk_on_sync kickolduser; do
 		config_get_bool boolval "$cfg" "$key"
 		[ -n "$boolval" ] || continue
+		[ "$echo_options" -eq 1 ] && echo "  options:" && echo_options=0
 		key=`echo "$key" | tr '_' '-'`
 		echo "    $key: $boolval"
 	done
 
+	echo
 }
 
 start_service() {
@@ -191,9 +225,9 @@ start_service() {
 	#
 	EOF
 
-	config_foreach ser2net_controlport controlport >> "$DYNAMICCFGFILE"
 	config_foreach ser2net_default default >> "$DYNAMICCFGFILE"
 	config_foreach ser2net_led led >> "$DYNAMICCFGFILE"
+	config_foreach ser2net_controlport controlport >> "$DYNAMICCFGFILE"
 	config_foreach ser2net_proxy proxy >> "$DYNAMICCFGFILE"
 
 	procd_open_instance
