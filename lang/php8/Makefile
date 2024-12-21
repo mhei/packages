@@ -94,7 +94,7 @@ endef
 
 define Package/php8-cli
   $(call Package/php8/Default)
-  DEPENDS+= +PACKAGE_php8-mod-intl:libstdcpp +riscv64:libatomic
+  DEPENDS+= +PACKAGE_php8-mod-intl:libstdcpp +riscv64:libatomic +loongarch64:libucontext
   TITLE+= (CLI)
 endef
 
@@ -105,7 +105,7 @@ endef
 
 define Package/php8-cgi
   $(call Package/php8/Default)
-  DEPENDS+= +PACKAGE_php8-mod-intl:libstdcpp +riscv64:libatomic
+  DEPENDS+= +PACKAGE_php8-mod-intl:libstdcpp +riscv64:libatomic +loongarch64:libucontext
   TITLE+= (CGI & FastCGI)
 endef
 
@@ -116,7 +116,7 @@ endef
 
 define Package/php8-fastcgi
   $(call Package/php8/Default)
-  DEPENDS+= +php8-cgi
+  DEPENDS+= +php8-cgi +loongarch64:libucontext
   TITLE:=FastCGI startup script
 endef
 
@@ -160,6 +160,7 @@ define Package/apache-mod-php8
   DEPENDS+=PACKAGE_apache-mod-php8:apache \
 	   +PACKAGE_php8-mod-intl:libstdcpp \
 	   +riscv64:libatomic \
+	   +loongarch64:libucontext \
 	   +libpcre2 +zlib
   TITLE:=PHP8 module for Apache Web Server
 endef
@@ -200,6 +201,9 @@ TARGET_CFLAGS += -D_LARGEFILE64_SOURCE
 endif
 ifneq ($(findstring riscv64,$(CONFIG_ARCH)),)
 TARGET_LDFLAGS += -latomic
+endif
+ifneq ($(findstring loongarch64,$(CONFIG_ARCH)),)
+TARGET_LDFLAGS += -lucontext
 endif
 
 ifneq ($(SDK)$(CONFIG_PACKAGE_php8-mod-bcmath),)
